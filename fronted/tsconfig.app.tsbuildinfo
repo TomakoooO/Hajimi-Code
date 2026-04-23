@@ -1,1 +1,1 @@
-{"root":["./src/main.ts","./src/vite-env.d.ts","./src/stores/index.ts","./src/app.vue","./src/components/helloworld.vue"],"version":"5.9.3"}
+{"root":["./src/main.ts","./src/vite-env.d.ts","./src/api/agent.ts","./src/api/http.ts","./src/core/ws-client.ts","./src/stores/editor.ts","./src/stores/index.ts","./src/stores/session.ts","./src/stores/settings.ts","./src/app.vue","./src/components/diffviewer.vue","./src/components/errorpanel.vue","./src/components/monacoeditor.vue","./src/components/refactorpanel.vue","./src/components/streamoutput.vue"],"version":"5.9.3"}
