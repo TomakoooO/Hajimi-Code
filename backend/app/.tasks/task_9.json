@@ -1,0 +1,8 @@
+{
+  "id": 9,
+  "subject": "Add database integration",
+  "description": "Set up database connection and create necessary tables for user data storage",
+  "status": "in_progress",
+  "blockedBy": [],
+  "owner": "bob_qa"
+}

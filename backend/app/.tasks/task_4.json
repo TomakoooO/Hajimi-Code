@@ -1,0 +1,8 @@
+{
+  "id": 4,
+  "subject": "Parse",
+  "description": "Parse input data and create AST or intermediate representation",
+  "status": "completed",
+  "blockedBy": [],
+  "owner": "alice_dev"
+}

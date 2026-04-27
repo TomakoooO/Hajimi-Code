@@ -1,0 +1,10 @@
+{
+  "id": 5,
+  "subject": "Transform",
+  "description": "Transform parsed data according to business rules",
+  "status": "pending",
+  "blockedBy": [
+    4
+  ],
+  "owner": ""
+}

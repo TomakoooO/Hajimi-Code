@@ -1,0 +1,45 @@
+{
+  "team_name": "default",
+  "members": [
+    {
+      "name": "alice",
+      "role": "coder",
+      "status": "idle"
+    },
+    {
+      "name": "bob",
+      "role": "tester",
+      "status": "idle"
+    },
+    {
+      "name": "charlie",
+      "role": "coordinator",
+      "status": "idle"
+    },
+    {
+      "name": "Eve",
+      "role": "inactive",
+      "status": "idle"
+    },
+    {
+      "name": "Alice",
+      "role": "\u7a0b\u5e8f\u5458",
+      "status": "shutdown"
+    },
+    {
+      "name": "Charlie",
+      "role": "\u9879\u76ee\u7ecf\u7406",
+      "status": "idle"
+    },
+    {
+      "name": "alice_dev",
+      "role": "developer",
+      "status": "idle"
+    },
+    {
+      "name": "bob_qa",
+      "role": "quality_assurance",
+      "status": "working"
+    }
+  ]
+}
