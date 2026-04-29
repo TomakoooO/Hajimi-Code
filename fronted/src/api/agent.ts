@@ -210,6 +210,13 @@ export async function askChatStream(
   return finalResult
 }
 
+export async function compactChat(sessionId: string) {
+  return request<{ status: string; message: string; messages?: { role: 'user' | 'assistant' | 'system', content: string }[] }>('/api/chat/compact', {
+    method: 'POST',
+    body: JSON.stringify({ session_id: sessionId }),
+  })
+}
+
 export async function readCodeByAddress(path: string) {
   return request<{
     path: string

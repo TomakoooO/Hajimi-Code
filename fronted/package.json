@@ -18,10 +18,12 @@
   "dependencies": {
     "monaco-editor": "^0.52.2",
     "pinia": "^3.0.4",
+    "plantuml-encoder": "^1.4.0",
     "vue": "^3.4.37"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@types/plantuml-encoder": "^1.4.2",
     "@typescript-eslint/eslint-plugin": "7.18.0",
     "@typescript-eslint/parser": "7.18.0",
     "@vitejs/plugin-vue": "^5.1.2",

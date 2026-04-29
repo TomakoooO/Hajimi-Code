@@ -1,28 +1,34 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import MonacoEditor from './components/MonacoEditor.vue'
+import TodoCard from './components/TodoCard.vue'
+import AgentTopNav from './components/AgentTopNav.vue'
+import SequenceDiagram from './components/SequenceDiagram.vue'
+import SettingsView from './components/SettingsView.vue'
 import {
   askChatStream,
   decideReviews,
   diffPreview,
   getPendingReviews,
   switchWorkspace,
+  compactChat,
+  readCodeByAddress,
   type DiffLine,
   type ReviewBatch,
   type ReviewFileChange,
   type TimelineEvent,
 } from './api/agent'
-import { useEditorStore, useSessionStore, useSettingsStore, MODEL_OPTIONS } from './stores'
+import { useEditorStore, useSessionStore, useSettingsStore, useTabsStore, MODEL_OPTIONS } from './stores'
 
 const settingsStore = useSettingsStore()
 const sessionStore = useSessionStore()
 const editorStore = useEditorStore()
+const tabsStore = useTabsStore()
 
 const { model, temperature, maxTokens } = storeToRefs(settingsStore)
 const { sessions, activeSessionId } = storeToRefs(sessionStore)
 
-const showSettings = ref(false)
 const showSessionMenu = ref(false)
 const editingSessionId = ref<string | null>(null)
 const renameText = ref('')
@@ -78,6 +84,17 @@ const lastSnapshot = ref('')
 const timelineEvents = ref<TimelineEvent[]>([])
 const timelinePaused = ref(false)
 const timelineError = ref('')
+
+const currentTodos = computed(() => {
+  for (let i = timelineEvents.value.length - 1; i >= 0; i--) {
+    const ev = timelineEvents.value[i]
+    if (ev.actor === 'tool' && ev.event === 'TodoWrite' && ev.payload?.items) {
+      return ev.payload.items as Array<{ content: string; status: string; activeForm: string }>
+    }
+  }
+  return []
+})
+
 let timelineWs: WebSocket | null = null
 let reconnectTimer: number | null = null
 
@@ -87,16 +104,6 @@ let reviewWs: WebSocket | null = null
 let reviewReconnectTimer: number | null = null
 
 const messagesContainer = ref<HTMLElement | null>(null)
-
-const form = ref({
-  model: model.value,
-  temperature: temperature.value,
-  maxTokens: maxTokens.value,
-  apiKey: '',
-})
-const errors = ref<{ model?: string; temperature?: string; maxTokens?: string; apiKey?: string }>(
-  {}
-)
 
 type ExplorerNode = {
   id: string
@@ -114,6 +121,39 @@ const loadingFile = ref(false)
 const explorerError = ref('')
 
 const activeSession = computed(() => sessionStore.activeSession)
+
+const CONTEXT_THRESHOLD = 100000
+const contextUsageTokens = computed(() => {
+  if (!activeSession.value) return 0
+  const jsonStr = JSON.stringify(activeSession.value.messages)
+  return Math.floor(jsonStr.length / 4)
+})
+const contextUsagePercent = computed(() => {
+  const percent = (contextUsageTokens.value / CONTEXT_THRESHOLD) * 100
+  return Math.min(100, Math.max(0, Math.round(percent)))
+})
+const showContextPopup = ref(false)
+const compacting = ref(false)
+
+async function handleCompact() {
+  if (!activeSession.value || compacting.value) return
+  compacting.value = true
+  try {
+    const res = await compactChat(activeSession.value.id)
+    if (res.status === 'ok' && res.messages) {
+      sessionStore.replaceMessages(activeSession.value.id, res.messages)
+      pushTerminal(`[context] 压缩成功`)
+    } else {
+      pushTerminal(`[context] ${res.message}`)
+    }
+  } catch (e) {
+    pushTerminal(`[context] Error: ${e instanceof Error ? e.message : e}`)
+  } finally {
+    compacting.value = false
+    showContextPopup.value = false
+  }
+}
+
 const editorCode = computed({
   get: () => activeSession.value.content,
   set: (value: string) => {
@@ -129,11 +169,51 @@ onMounted(() => {
   editorStore.setLanguage(activeSession.value.language)
   editorStore.setContent(activeSession.value.content)
   lastSnapshot.value = activeSession.value.content
-  resetForm()
   connectTimelineWs()
   connectLogsWs()
   connectReviewWs()
   void loadPendingReviews()
+})
+
+watch(() => tabsStore.activeTabId, async (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    const tab = tabsStore.tabs.find((t: any) => t.id === newId)
+    if (tab && tab.type === 'code' && selectedFilePath.value !== tab.contentRef) {
+      const node = findNodeByPath(tab.contentRef)
+      if (node && node.kind === 'file') {
+        try {
+          const file = await (node.handle as PickerFileHandle).getFile()
+          const text = await file.text()
+          selectedFilePath.value = node.path
+          editorCode.value = text
+          const language = inferLanguage(node.name)
+          editorStore.setLanguage(language)
+          sessionStore.setLanguage(activeSession.value.id, language)
+          reviewRevealLine.value = 1
+        } catch (e) {
+          console.error('Failed to switch tab code file', e)
+        }
+      } else {
+        // Fetch from backend if not found locally
+        try {
+          const res = await readCodeByAddress(tab.contentRef)
+          selectedFilePath.value = tab.contentRef
+          editorCode.value = res.content
+          editorStore.setLanguage(res.language)
+          sessionStore.setLanguage(activeSession.value.id, res.language)
+          reviewRevealLine.value = 1
+        } catch (e) {
+          console.error('Failed to fetch code from backend', e)
+        }
+      }
+    } else if (!tab) {
+      selectedFilePath.value = ''
+      editorCode.value = ''
+    }
+  } else if (!newId) {
+    selectedFilePath.value = ''
+    editorCode.value = ''
+  }
 })
 
 onBeforeUnmount(() => {
@@ -157,52 +237,12 @@ function normalizePath(value: string) {
   return value.replace(/\\/g, '/').toLowerCase()
 }
 
-function resetForm() {
-  form.value = {
-    model: model.value,
-    temperature: temperature.value,
-    maxTokens: maxTokens.value,
-    apiKey: settingsStore.apiKey,
-  }
-  errors.value = {}
-}
-
 function openSettings() {
-  resetForm()
-  showSettings.value = true
-}
-
-function validate() {
-  const next: typeof errors.value = {}
-  if (!MODEL_OPTIONS.includes(form.value.model as (typeof MODEL_OPTIONS)[number])) next.model = '模型无效'
-  if (
-    Number.isNaN(form.value.temperature) ||
-    form.value.temperature < 0 ||
-    form.value.temperature > 2
-  ) {
-    next.temperature = '温度范围 0-2'
-  }
-  if (
-    !Number.isInteger(form.value.maxTokens) ||
-    form.value.maxTokens < 128 ||
-    form.value.maxTokens > 8192
-  ) {
-    next.maxTokens = 'Max Tokens 范围 128-8192'
-  }
-  if (!form.value.apiKey.trim()) next.apiKey = 'API-Key 不能为空'
-  errors.value = next
-  return !Object.keys(next).length
-}
-
-function saveSettings() {
-  if (!validate()) return
-  settingsStore.updateSettings({
-    model: form.value.model as (typeof MODEL_OPTIONS)[number],
-    temperature: form.value.temperature,
-    maxTokens: form.value.maxTokens,
-    apiKey: form.value.apiKey,
+  tabsStore.openTab({
+    id: 'settings',
+    label: '设置',
+    type: 'settings',
   })
-  showSettings.value = false
 }
 
 function createSession() {
@@ -404,6 +444,13 @@ async function openExplorerFile(node: ExplorerNode) {
     editorStore.setLanguage(language)
     sessionStore.setLanguage(activeSession.value.id, language)
     reviewRevealLine.value = 1
+    
+    tabsStore.openTab({
+      id: node.path,
+      label: getFileBaseName(node.path),
+      type: 'code',
+      contentRef: node.path
+    })
   } catch {
     explorerError.value = `读取文件失败：${node.path}`
   } finally {
@@ -741,6 +788,11 @@ function connectTimelineWs() {
       if (payload.type !== 'timeline' || !payload.event) return
       if (timelinePaused.value) return
       timelineEvents.value = [...timelineEvents.value.slice(-299), payload.event]
+      
+      // Check for subagent activity
+      if (payload.event.actor === 'sub-agent' || payload.event.event === 'task') {
+        tabsStore.setSubAgentActive(true)
+      }
     } catch {
       timelineError.value = '时序消息解析失败'
     }
@@ -804,7 +856,7 @@ function connectReviewWs() {
     <main class="workbench workbench-3col">
       <aside class="explorer-panel explorer-left">
         <div class="panel-title panel-row">
-          <span>项目资源管理器</span>
+          <span>🐱 项目资源管理器</span>
           <button class="btn mini" :disabled="selectingFolder" @click="openProjectFolder">
             {{ selectingFolder ? '选择中...' : '选择目录' }}
           </button>
@@ -831,11 +883,12 @@ function connectReviewWs() {
       </aside>
 
       <section class="center-panel">
-        <div class="center-toolbar">
-          <div class="toolbar-left">
-            <button class="btn mini" @click="showSessionMenu = !showSessionMenu">会话线程</button>
-            <button class="btn mini" @click="createSession">新建会话</button>
-            <button class="btn mini" @click="openSettings">设置</button>
+        <div class="center-toolbar top-toolbar">
+          <div class="toolbar-row toolbar-row-actions">
+            <div class="toolbar-left toolbar-actions">
+            <button class="btn mini hajimi-btn" @click="showSessionMenu = !showSessionMenu">🐱 会话线程</button>
+            <button class="btn mini hajimi-btn" @click="createSession">🐾 新建会话</button>
+            <button class="btn mini hajimi-btn" @click="openSettings">⚙️ 设置</button>
             <button class="btn mini" @click="addCurrentFileRef">引用当前文件</button>
             <button class="btn mini" @click="reviewDiffMode = !reviewDiffMode">
               {{ reviewDiffMode ? '纯代码模式' : 'Diff 模式' }}
@@ -865,15 +918,25 @@ function connectReviewWs() {
                 </li>
               </ul>
             </div>
+            </div>
+            <div class="toolbar-right">
+              <span class="settings-chip">📄 {{ selectedFilePath || '未选择文件' }}</span>
+              <span class="settings-chip">Req: {{ lastRequestId || '-' }}</span>
+            </div>
           </div>
-          <div class="toolbar-right">
-            <span class="settings-chip">📄 {{ selectedFilePath || '未选择文件' }}</span>
-            <span class="settings-chip">Req: {{ lastRequestId || '-' }}</span>
+          <div class="toolbar-row toolbar-row-tabs">
+            <AgentTopNav />
           </div>
         </div>
 
         <div class="editor-shell">
-          <template v-if="!reviewDiffMode || !selectedReviewFile">
+          <template v-if="tabsStore.activeTab?.type === 'settings'">
+            <SettingsView />
+          </template>
+          <template v-else-if="tabsStore.activeTab?.type === 'sequence'">
+            <SequenceDiagram :sessionId="tabsStore.activeTab.contentRef" />
+          </template>
+          <template v-else-if="!reviewDiffMode || !selectedReviewFile">
             <MonacoEditor
               v-model="editorCode"
               :language="editorLanguage"
@@ -931,7 +994,7 @@ function connectReviewWs() {
       </section>
 
       <aside class="agent-panel">
-        <div class="panel-title">Agent 交互（占位模式）</div>
+        <div class="panel-title hajimi-panel-title">Agent 交互 <span class="hajimi-badge">🐱 ハジミ</span></div>
         <div class="agent-meta">
           <span class="meta-chip">{{ getModelIcon(model) }} {{ model }}</span>
           <span class="meta-chip">🌡 T={{ temperature }}</span>
@@ -948,7 +1011,7 @@ function connectReviewWs() {
         <div ref="messagesContainer" class="agent-messages">
           <div v-for="m in activeSession.messages" :key="m.id" class="message-row" :class="m.role">
             <div v-if="m.role === 'assistant'" class="avatar-box">
-              <img src="/布偶猫.svg" alt="AI-Coding" class="avatar" />
+              <img src="/hajimi.svg" alt="🐱 ハジミ" class="avatar hajimi-avatar" />
             </div>
             <div class="message-bubble">
               <div class="message-content">{{ m.content }}</div>
@@ -959,10 +1022,10 @@ function connectReviewWs() {
           </div>
           <div v-if="lastResponseRefs.length" class="message-row assistant">
             <div class="avatar-box">
-              <img src="/布偶猫.svg" alt="AI-Coding" class="avatar" />
+              <img src="/hajimi.svg" alt="🐱 ハジミ" class="avatar hajimi-avatar" />
             </div>
             <div class="message-bubble refs-bubble">
-              <strong>📦 引用的文件:</strong>
+              <strong>🐱 ハジミ引用的文件:</strong>
               <div
                 v-for="item in lastResponseRefs"
                 :key="item.path"
@@ -975,14 +1038,14 @@ function connectReviewWs() {
           </div>
           <div v-for="review in pendingReviews" :key="review.review_id" class="message-row assistant">
             <div class="avatar-box">
-              <img src="/布偶猫.svg" alt="AI-Coding" class="avatar" />
+              <img src="/hajimi.svg" alt="🐱 ハジミ" class="avatar hajimi-avatar" />
             </div>
             <div class="message-bubble review-bubble">
               <div class="review-title-row">
-                <strong>代码审查（待审查）</strong>
+                <strong>🔍 ハジミ代码审查</strong>
                 <div class="review-actions">
-                  <button class="btn mini" @click="decidePendingReviews('confirm', [review.review_id])">同意</button>
-                  <button class="btn mini danger" @click="decidePendingReviews('rollback', [review.review_id])">回退</button>
+                  <button class="btn mini" @click="decidePendingReviews('confirm', [review.review_id])">✅ 同意</button>
+                  <button class="btn mini danger" @click="decidePendingReviews('rollback', [review.review_id])">🔙 回退</button>
                 </div>
               </div>
               <div class="review-list">
@@ -998,15 +1061,27 @@ function connectReviewWs() {
               </div>
             </div>
           </div>
+          
+          <div v-if="currentTodos.length" class="message-row assistant">
+            <div class="avatar-box">
+              <img src="/hajimi.svg" alt="🐱 ハジミ" class="avatar hajimi-avatar" />
+            </div>
+            <div class="message-bubble" style="background: transparent; border: none; padding: 0; box-shadow: none;">
+              <TodoCard :todos="currentTodos" />
+            </div>
+          </div>
+
           <div v-if="agentBusy" class="message-row assistant">
             <div class="avatar-box">
-              <img src="/布偶猫.svg" alt="AI-Coding" class="avatar" />
+              <img src="/hajimi.svg" alt="🐱 ハジミ" class="avatar hajimi-avatar-bounce" />
             </div>
             <div class="message-bubble thinking-bubble">
-              <div class="typing-indicator">
-                <span></span><span></span><span></span>
+              <div class="hajimi-typing">
+                <span class="paw">🐾</span>
+                <span class="paw">🐾</span>
+                <span class="paw">🐾</span>
               </div>
-              <span class="thinking-text">思考中...</span>
+              <span class="thinking-text">🐱 ハジミ思考中...</span>
             </div>
           </div>
         </div>
@@ -1028,6 +1103,26 @@ function connectReviewWs() {
               <button class="icon-btn danger" @click="removeSnippet(snippet.id)">移除</button>
             </div>
           </div>
+          <div class="agent-input-actions">
+            <div class="context-usage-wrapper" @mouseenter="showContextPopup = true" @mouseleave="showContextPopup = false">
+              <div class="context-icon-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+                  <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+                </svg>
+                <span>{{ contextUsagePercent }}%</span>
+              </div>
+              <transition name="fade-slide">
+                <div v-if="showContextPopup" class="context-popup">
+                  <div class="popup-title">上下文使用率</div>
+                  <div class="popup-value">{{ Math.round(contextUsageTokens / 1000) }}K of {{ Math.round(CONTEXT_THRESHOLD / 1000) }}K</div>
+                  <button class="btn mini compact-btn" @click="handleCompact" :disabled="compacting">
+                    {{ compacting ? '压缩中...' : '压缩' }}
+                  </button>
+                </div>
+              </transition>
+            </div>
+          </div>
           <div class="agent-input-row">
             <textarea
               v-model="agentInput"
@@ -1044,27 +1139,5 @@ function connectReviewWs() {
       </aside>
     </main>
 
-    <aside v-if="showSettings" class="settings-drawer">
-      <h3>设置</h3>
-      <label
-        >模型<select v-model="form.model"
-          ><option v-for="m in MODEL_OPTIONS" :key="m" :value="m">{{ m }}</option></select
-      ></label>
-      <small v-if="errors.model" class="error">{{ errors.model }}</small>
-      <label
-        >Temperature<input v-model.number="form.temperature" type="number" min="0" max="2" step="0.1"
-      /></label>
-      <small v-if="errors.temperature" class="error">{{ errors.temperature }}</small>
-      <label
-        >Max Tokens<input v-model.number="form.maxTokens" type="number" min="128" max="8192" step="1"
-      /></label>
-      <small v-if="errors.maxTokens" class="error">{{ errors.maxTokens }}</small>
-      <label>API-Key<input v-model="form.apiKey" type="password" placeholder="sk-..." /></label>
-      <small v-if="errors.apiKey" class="error">{{ errors.apiKey }}</small>
-      <div class="drawer-actions">
-        <button class="btn" @click="showSettings = false">取消</button>
-        <button class="btn primary" @click="saveSettings">保存</button>
-      </div>
-    </aside>
   </div>
 </template>

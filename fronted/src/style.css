@@ -14,6 +14,14 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* 🐱 Hajimi Theme Variables */
+  --hajimi-orange: #f97316;
+  --hajimi-orange-light: #fb923c;
+  --hajimi-orange-dark: #ea580c;
+  --hajimi-paw: #fbbf24;
+  --hajimi-blush: #fca5a5;
+  --hajimi-whisker: #1c1917;
+  --hajimi-glow: rgba(249, 115, 22, 0.15);
 }
 * {
   box-sizing: border-box;
@@ -53,31 +61,39 @@ body {
   align-items: center;
 }
 .settings-chip {
-  height: 24px;
+  height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid #334155;
-  background: #0f172a;
+  border: 1px solid #2a3a54;
+  background: rgba(15, 23, 42, 0.65);
   font-size: 12px;
-  line-height: 24px;
-  color: #93c5fd;
+  line-height: 28px;
+  color: #bfdbfe;
   max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .btn {
-  height: 32px;
+  height: 34px;
   padding: 0 12px;
-  border-radius: 6px;
-  border: 1px solid #374151;
-  background: #1f2937;
-  color: #e5e7eb;
+  border-radius: 9px;
+  border: 1px solid #2a3a54;
+  background: rgba(15, 23, 42, 0.65);
+  color: #dbe6f3;
   cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn:hover {
+  border-color: #3b82f6;
+  background: rgba(37, 99, 235, 0.16);
 }
 .btn.primary {
   background: #2563eb;
   border-color: #2563eb;
+  color: #f8fafc;
 }
 .workbench {
   flex: 1;
@@ -153,11 +169,54 @@ body {
   grid-template-rows: auto 1fr 260px;
   gap: 10px;
   min-width: 0;
+  overflow: hidden;
+}
+.center-panel > * {
+  min-width: 0;
 }
 .center-toolbar {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+  align-items: center;
+}
+.top-toolbar {
+  min-height: 78px;
+  border: 1px solid #1f2c42;
+  border-radius: 12px;
+  padding: 8px 10px 10px;
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.78), rgba(15, 23, 42, 0.82));
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.3), 0 2px 6px rgba(2, 6, 23, 0.22);
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin: -2px 0 2px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.toolbar-row-actions {
+  position: relative;
+}
+.toolbar-row-tabs {
+  padding-top: 8px;
+  padding-inline: 2px;
+  border-top: 1px solid rgba(71, 85, 105, 0.35);
+  min-width: 0;
 }
 .toolbar-left,
 .toolbar-right {
@@ -165,6 +224,32 @@ body {
   gap: 8px;
   align-items: center;
   position: relative;
+  min-width: 0;
+}
+.toolbar-actions {
+  flex: 1;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: none;
+  min-height: 34px;
+}
+.toolbar-actions::-webkit-scrollbar {
+  display: none;
+}
+.toolbar-right {
+  flex-shrink: 0;
+  min-height: 34px;
+  max-width: 42%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.toolbar-right::-webkit-scrollbar {
+  display: none;
+}
+.toolbar-right .settings-chip {
+  margin-left: 2px;
+  flex-shrink: 0;
 }
 .editor-shell {
   min-height: 0;
@@ -237,8 +322,8 @@ body {
   gap: 6px;
 }
 .btn.mini {
-  height: 28px;
-  padding: 0 8px;
+  height: 32px;
+  padding: 0 10px;
   font-size: 12px;
 }
 .btn.mini.danger {
@@ -510,6 +595,92 @@ body {
   gap: 8px;
   align-items: flex-end;
 }
+
+.agent-input-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.context-usage-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.context-icon-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid #1e293b;
+  transition: all 0.2s ease;
+}
+
+.context-icon-btn:hover {
+  background: rgba(30, 41, 59, 0.8);
+  color: #cbd5e1;
+}
+
+.context-popup {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 200px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.context-popup::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  right: 16px;
+  width: 10px;
+  height: 10px;
+  background: #1e293b;
+  border-right: 1px solid #334155;
+  border-bottom: 1px solid #334155;
+  transform: rotate(45deg);
+}
+
+.context-popup .popup-title {
+  font-size: 13px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.context-popup .popup-value {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.compact-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.2s ease;
+}
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
 .agent-textarea {
   flex: 1;
   background: #0f172a;
@@ -531,16 +702,17 @@ body {
 }
 .session-dropdown {
   position: absolute;
-  top: 34px;
+  top: 36px;
   left: 0;
   width: 360px;
   max-height: 280px;
   overflow: auto;
   background: #0f172a;
   border: 1px solid #334155;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 8px;
-  z-index: 20;
+  z-index: 40;
+  box-shadow: 0 16px 36px rgba(2, 6, 23, 0.55);
 }
 .ref-chips {
   display: flex;
@@ -686,4 +858,123 @@ body {
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* ===== 🐱 Hajimi Animations ===== */
+
+/* 🐾 猫爪踩踩动画 */
+@keyframes hajimi-paw-step {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-6px) scale(1.1); }
+}
+
+/* 🐱 猫猫呼吸 */
+@keyframes hajimi-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+/* 🐟 小鱼摇摆 */
+@keyframes hajimi-fish-wiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+
+/* ✨ 星星闪闪 */
+@keyframes hajimi-sparkle {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* 🐱 哈吉米打字指示器（猫爪版） */
+.hajimi-typing {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0;
+}
+.hajimi-typing .paw {
+  display: inline-block;
+  font-size: 16px;
+  animation: hajimi-paw-step 0.8s infinite ease-in-out;
+}
+.hajimi-typing .paw:nth-child(2) { animation-delay: 0.15s; }
+.hajimi-typing .paw:nth-child(3) { animation-delay: 0.3s; }
+
+/* 🐱 哈吉米状态徽章 */
+.hajimi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, var(--hajimi-orange), var(--hajimi-orange-light));
+  color: #1c1917;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  animation: hajimi-breathe 3s infinite ease-in-out;
+}
+
+/* 🐱 哈吉米标题渐变 */
+.hajimi-gradient-text {
+  background: linear-gradient(135deg, var(--hajimi-orange), var(--hajimi-paw));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 🐱 猫爪按钮悬停效果 */
+.btn.hajimi-btn:hover {
+  border-color: var(--hajimi-orange);
+  background: var(--hajimi-glow);
+  box-shadow: 0 0 12px var(--hajimi-glow);
+}
+
+/* 🐱 哈吉米面板标题 */
+.hajimi-panel-title::before {
+  content: '🐱 ';
+  font-size: 14px;
+}
+
+/* 🐟 小鱼加载提示 */
+.hajimi-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hajimi-orange-light);
+  font-size: 13px;
+}
+.hajimi-loading .fish {
+  display: inline-block;
+  animation: hajimi-fish-wiggle 0.6s infinite ease-in-out;
+}
+
+/* ✨ 哈吉米闪光效果 */
+.hajimi-sparkle-container {
+  position: relative;
+}
+.hajimi-sparkle-container::after {
+  content: '✨';
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  font-size: 10px;
+  animation: hajimi-sparkle 1.5s infinite ease-in-out;
+}
+
+/* 🐱 滚动条美化 - 哈吉米橙 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(249, 115, 22, 0.25);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(249, 115, 22, 0.45);
 }

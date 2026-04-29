@@ -47,7 +47,15 @@ from pathlib import Path
 from queue import Queue
 
 from anthropic import Anthropic
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
+
+# Ensure backend root is in sys.path when running as a script
+if __name__ == "__main__":
+    backend_dir = str(Path(__file__).resolve().parents[2])
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
 
 from app.core.config import settings
 from app.services.timeline_store import timeline_store
@@ -65,10 +73,12 @@ def get_client():
 def get_model():
     return os.getenv("MODEL_ID", "deepseek-chat")
 
+APP_DIR = Path(__file__).resolve().parents[1]
+
 TEAM_DIR = WORKDIR / ".team"
-INBOX_DIR = TEAM_DIR / "inbox"
+INBOX_DIR = TEAM_DIR = WORKDIR / ".team"
 TASKS_DIR = WORKDIR / ".tasks"
-SKILLS_DIR = WORKDIR / "skills"
+SKILLS_DIR = APP_DIR / "skills"
 TRANSCRIPT_DIR = WORKDIR / ".transcripts"
 TOKEN_THRESHOLD = 100000
 POLL_INTERVAL = 5
@@ -76,7 +86,6 @@ IDLE_TIMEOUT = 60
 
 VALID_MSG_TYPES = {"message", "broadcast", "shutdown_request",
                    "shutdown_response", "plan_approval_response"}
-
 
 def switch_workspace_root(path: str) -> str:
     global WORKDIR, TEAM_DIR, INBOX_DIR, TASKS_DIR, SKILLS_DIR, TRANSCRIPT_DIR, SYSTEM
@@ -89,9 +98,9 @@ def switch_workspace_root(path: str) -> str:
 
     WORKDIR = next_root
     TEAM_DIR = WORKDIR / ".team"
-    INBOX_DIR = TEAM_DIR / "inbox"
+    INBOX_DIR = TEAM_DIR = WORKDIR / ".team"
     TASKS_DIR = WORKDIR / ".tasks"
-    SKILLS_DIR = WORKDIR / "skills"
+    SKILLS_DIR = APP_DIR / "skills"
     TRANSCRIPT_DIR = WORKDIR / ".transcripts"
 
     global TodoManager, SkillLoader, TaskManager, BackgroundManager, MessageBus, TeammateManager
@@ -112,12 +121,13 @@ Skills: {SKILLS.descriptions()}"""
 
 
 # === SECTION: base_tools ===
+# 路径安全校验（防止逃逸工作空间）
 def safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
         raise ValueError(f"Path escapes workspace: {p}")
     return path
-
+#执行 Shell 命令（拦截危险指令如 rm -rf /、sudo 等
 def run_bash(command: str) -> str:
     dangerous = ["rm -rf /", "sudo", "shutdown", "reboot", "> /dev/"]
     if any(d in command for d in dangerous):
@@ -129,7 +139,7 @@ def run_bash(command: str) -> str:
         return out[:50000] if out else "(no output)"
     except subprocess.TimeoutExpired:
         return "Error: Timeout (120s)"
-
+# run_read/run_write：读写文件（支持行数限制）
 def run_read(path: str, limit: int = None) -> str:
     try:
         lines = safe_path(path).read_text().splitlines()
@@ -147,7 +157,7 @@ def run_write(path: str, content: str) -> str:
         return f"Wrote {len(content)} bytes to {path}"
     except Exception as e:
         return f"Error: {e}"
-
+#run_edit：精准替换文件内容（需匹配旧文本）
 def run_edit(path: str, old_text: str, new_text: str) -> str:
     try:
         fp = safe_path(path)
@@ -160,7 +170,7 @@ def run_edit(path: str, old_text: str, new_text: str) -> str:
         return f"Error: {e}"
 
 
-# === SECTION: todos (s03) ===
+# todo列表 一个对话期间的短期人物列表
 class TodoManager:
     def __init__(self):
         self.items = []
@@ -198,6 +208,7 @@ class TodoManager:
 
 
 # === SECTION: subagent (s04) ===
+# 子agent的可调用工具有限 不能递归生成子agent
 def run_subagent(prompt: str, agent_type: str = "Explore") -> str:
     sub_tools = [
         {"name": "bash", "description": "Run command.",
@@ -242,7 +253,7 @@ class SkillLoader:
         self.skills = {}
         if skills_dir.exists():
             for f in sorted(skills_dir.rglob("SKILL.md")):
-                text = f.read_text()
+                text = f.read_text(encoding="utf-8")
                 match = re.match(r"^---\n(.*?)\n---\n(.*)", text, re.DOTALL)
                 meta, body = {}, text
                 if match:
@@ -252,7 +263,7 @@ class SkillLoader:
                             meta[k.strip()] = v.strip()
                     body = match.group(2).strip()
                 name = meta.get("name", f.parent.name)
-                self.skills[name] = {"meta": meta, "body": body}
+                self.skills[name] = {"meta": meta, "body": body, "path": str(f)}
 
     def descriptions(self) -> str:
         if not self.skills: return "(no skills)"
@@ -265,9 +276,16 @@ class SkillLoader:
 
 
 # === SECTION: compression (s06) ===
+
+# 估算对话 Token 数（JSON 长度 / 4）
 def estimate_tokens(messages: list) -> int:
     return len(json.dumps(messages, default=str)) // 4
 
+# 轻量压缩（保留最近 3 个工具结果，其余清空）
+#  Agent 每次和 LLM 交互前
+# 触发逻辑：
+#遍历传入的 messages ，如果发现之前的消息记录里有超过 3 轮以上的长文本 tool_result （比如读取了巨长的文件，或者执行终端命令返回了几千行输出），
+# 它会将那些过于陈旧的超长工具输出截断或只保留摘要，从而避免由于上下文累积过快而导致大模型的 Token 溢出报错
 def microcompact(messages: list):
     indices = []
     for i, msg in enumerate(messages):
@@ -281,6 +299,10 @@ def microcompact(messages: list):
         if isinstance(part.get("content"), str) and len(part["content"]) > 100:
             part["content"] = "[cleared]"
 
+# 当 microcompact 处理后，通过 estimate_tokens(messages) 计算的 Token 数仍超过 TOKEN_THRESHOLD（10 万）时，触发重度压缩
+#先将完整的对话上下文保存到 TRANSCRIPT_DIR 目录下的 JSONL 文件（留痕，避免丢失）；
+#截取最后 8 万字符的上下文，调用 LLM 生成「连续性摘要」（保留核心逻辑，丢弃细节）；
+#用「摘要 + 转录文件路径」替换原有的全部上下文，大幅降低 Token 数
 def auto_compact(messages: list) -> list:
     TRANSCRIPT_DIR.mkdir(exist_ok=True)
     path = TRANSCRIPT_DIR / f"transcript_{int(time.time())}.jsonl"

@@ -120,5 +120,24 @@ export const useSessionStore = defineStore('session', {
       target.updatedAt = Date.now()
       this.persist()
     },
+    replaceMessages(id: string, messages: { role: SessionMessage['role'], content: string }[]) {
+      const target = this.sessions.find((s) => s.id === id)
+      if (!target) return
+      target.messages = messages.map(m => ({
+        id: crypto.randomUUID(),
+        role: m.role,
+        content: m.content,
+        createdAt: Date.now()
+      }))
+      target.updatedAt = Date.now()
+      this.persist()
+    },
+    clearMessages(id: string) {
+      const target = this.sessions.find((s) => s.id === id)
+      if (!target) return
+      target.messages = []
+      target.updatedAt = Date.now()
+      this.persist()
+    },
   },
 })

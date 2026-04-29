@@ -1,0 +1,33 @@
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+dev-docs/
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm/
+
+# Project Generated / State files
+.tasks/
+.team/
+.transcripts/
+backend/app/.tasks/
+backend/app/.team/
+backend/app/.transcripts/
+backend/app/agent/.tasks/
+backend/app/agent/.team/
+backend/app/agent/.transcripts/
+fronted/test-results/
