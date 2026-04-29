@@ -6,7 +6,7 @@
 ## 📖 项目简介
 
 Hajimi Code 是一个类似 Trae/Cursor 的智能代码编辑器前端与后端分离项目。它由本地运行的 AI 智能体驱动，能够自主探索工作区、阅读并修改代码、管理任务，并支持动态加载技能卡片（SKILLs）。
-agent开发部分参考了Learn Claude Code教程并做了部分修改https://github.com/shareAI-lab/learn-claude-code/blob/main/README.md，感谢开源
+agent开发部分参考了Learn Claude Code教程并做了部分修改https://github.com/shareAI-lab/learn-claude-code/blob/main/README.md
 ---
 
 ## 🚀 项目功能
