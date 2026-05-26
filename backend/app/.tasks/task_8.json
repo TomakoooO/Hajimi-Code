@@ -1,8 +1,0 @@
-{
-  "id": 8,
-  "subject": "Implement user authentication system",
-  "description": "Create a secure authentication system with login, registration, and password reset functionality",
-  "status": "completed",
-  "blockedBy": [],
-  "owner": "alice_dev"
-}

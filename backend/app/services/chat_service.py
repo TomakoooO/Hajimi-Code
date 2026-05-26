@@ -19,6 +19,17 @@ async def run_chat_stream(
 ) -> AsyncGenerator[str, None]:
     request_id = f"r-{uuid4().hex[:12]}"
     session = session_store.ensure_session(session_id)
+    if message.strip().startswith("/remember"):
+        from app.agent.s_full import remember_user_rule, switch_workspace_root
+
+        switch_workspace_root(str(get_workspace_root()))
+        response_text = remember_user_rule(message.strip()[len("/remember"):].strip())
+        session_store.append_message(session.session_id, "user", message)
+        session_store.append_message(session.session_id, "assistant", response_text)
+        timeline_store.publish(request_id, "user", "memory.remember", {"message": message})
+        yield f"data: {json.dumps({'type': 'delta', 'text': response_text})}\n\n"
+        yield "data: [DONE]\n\n"
+        return
     snippets = snippets or []
     files = files or []
     user_message = message

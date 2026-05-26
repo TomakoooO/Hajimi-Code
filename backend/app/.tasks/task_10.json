@@ -1,8 +1,0 @@
-{
-  "id": 10,
-  "subject": "Create API documentation",
-  "description": "Generate comprehensive API documentation with examples and usage guidelines",
-  "status": "completed",
-  "blockedBy": [],
-  "owner": "bob_qa"
-}
